@@ -1,0 +1,43 @@
+name: Job Ad Monitor
+
+on:
+  schedule:
+    # Runs daily at 08:00 UTC. The script itself only does a real check
+    # every 5 days (see CHECK_INTERVAL_DAYS in job_monitor.py) — running
+    # daily just makes sure that 5-day cadence stays accurate even across
+    # month boundaries.
+    - cron: "0 8 * * *"
+  workflow_dispatch: {}  # lets you trigger it manually from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  check-jobs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Run job monitor
+        env:
+          NTFY_TOPIC: ${{ vars.NTFY_TOPIC }}
+        run: python job_monitor.py
+
+      - name: Commit updated state
+        run: |
+          git config user.name "job-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state.json
+          git diff --staged --quiet || git commit -m "Update job monitor state [skip ci]"
+          git push
